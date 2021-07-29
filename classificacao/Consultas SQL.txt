@@ -1,0 +1,67 @@
+1. Criação da Tabela de CNPJ de Interesse
+
+CREATE TABLE u56850778587.TCC_CNPJ_INTERESSE as (select	distinct a11.nr_pessoa_juridica NR_PESSOA_JURIDICA,
+    a11.NR_CNPJ_PESS_JURID  NR_CNPJ_PESS_JURID,
+	a11.NR_NIVEL1_SECAO_EMP  NR_NIVEL1_SECAO,
+	a11.NR_NIVEL2_DIVISAO_EMP  NR_NIVEL2_DIVISAO,
+	a12.NM_NIVEL2_DIVISAO  NM_NIVEL2_DIVISAO,
+	a11.CD_NUM_CNPJ_MATRIZ  CD_NUM_CNPJ_MATRIZ,
+	a11.NR_PJ_PORTE NR_PJ_PORTE,
+	a11.NM_EMPRESARIAL_PJ  NM_EMPRESARIAL_PJ,
+	a11.NR_CONTRIB_DIFER_PJ NM_CONTRIB_DIFER_PJ,
+	a11.NR_CONTRIB_ESPECIAL_PJ NM_CONTRIB_ESPECIAL_PJ,
+	a11.nr_sit_cadastral_pj NR_SIT_CADASTRAL_PJ,
+	a11.nr_grupo_setor_pj GRUPO_SETOR,
+	a11.md_vl_rec_bruta_dipj_emp RECEITA_BRUTA,
+	a11.nr_ind_opcao_simples_pj SIMPLES
+from	dime.wd_pj_pessoas_juridicas a11
+	join	dime.wd_ae_nivel2_divisao	a12
+	  on 	(a11.NR_NIVEL1_SECAO_EMP = a12.NR_NIVEL1_SECAO)
+where	a11.NR_NIVEL1_SECAO_EMP in (3) and a11.nr_nivel2_divisao_emp = a12.nr_nivel2_divisao and a11.nr_sit_cadastral_pj = 5 
+and a11.nr_ind_opcao_simples_pj = 2)
+
+Resultado: Inserted 195708 row(s)
+
+2. Extração dos Dados necessários do CNPJ: 
+
+select distinct CNPJ.nr_pessoa_juridica, CNPJ.nr_cnpj_pess_jurid, CNPJ.nr_pj_porte, CNPJ.nm_contrib_difer_pj, 
+    CNPJ.nm_contrib_especial_pj, CNPJ.receita_bruta
+    from u56850778587.puc_tcc_cnpj_interesse CNPJ
+
+3. Extração da Arrecadação
+
+select cast(arrec.nr_pessoa_juridica as string), cast(arrec.nr_cnpj_pess_jurid as string), arrec.wjxbfs1 
+	from puc_tcc_arrecadacao_completa_2019 arrec
+
+4. Seleção com join para gerar um CSV único
+
+select distinct cast (CNPJ.nr_pessoa_juridica as string) NR_PESSOA_JURIDICA, 
+    cast(CNPJ.nr_cnpj_pess_jurid as string) CNPJ_PESSOA_JURIDICA, 
+    CNPJ.nm_empresarial_pj NOME_PESSOA_JURIDICA, 
+    CNPJ.nr_pj_porte PORTE_PESSOA_JURIDICA, 
+    PORTE.nm_porte NOME_PORTE,
+    CNPJ.nm_contrib_difer_pj PJ_DIFERENCIADA, 
+    DIFER.nm_ind_emp_difer STATUS_DIFERENCIADA,
+    CNPJ.nm_contrib_especial_pj PJ_ESPECIAL, 
+    ESPECIAL.nm_ind_emp_especial STATUS_ESPECIAL,
+    CNPJ.receita_bruta PJ_RECEITA_BRUTA, 
+    ARREC.wjxbfs1 PJ_ARRECADACAO
+from u56850778587.puc_tcc_cnpj_interesse CNPJ left outer join u56850778587.puc_tcc_arrecadacao_completa_2019 ARREC
+    on (CNPJ.nr_cnpj_pess_jurid = ARREC.nr_cnpj_pess_jurid)
+    inner join dime.wd_ir_porte PORTE on (CNPJ.nr_pj_porte = PORTE.nr_porte)
+    inner join dime.wd_pj_ind_emp_difer DIFER on (cnpj.nm_contrib_difer_pj = DIFER.b_nr_ind_emp_difer)
+    inner join dime.wd_pj_ind_emp_especial ESPECIAL on (cnpj.nm_contrib_especial_pj = ESPECIAL.nr_ind_emp_especial)
+    
+
+
+5. Seleção de Créditos e Débitos DCTF
+
+select left(cast(DEC_CRED.cd_cnpj_declarante as string),8) CNPJ, DECLARACAO.nm_empresarial_decl NOME_EMPRESA, 
+    sum(DEC_CRED.vl_cred) VALOR_CREDITO, sum(DEC_DEB.vl_deb) VALOR_DÉBITO
+from  dctf.wd_dctf_decl DECLARACAO, dctf.wf_dctf_cred DEC_CRED, dctf.wf_dctf_deb DEC_DEB
+where DECLARACAO.nr_decl = DEC_CRED.nr_decl and DECLARACAO.nr_decl = DEC_DEB.nr_decl
+    and dec_cred.dt_dia_inic_per >= 20190101 and dec_cred.dt_dia_fim_per <= 20191231
+    and left(cast(DEC_CRED.cd_cnpj_declarante as string),8) in (select nr_cnpj_pess_jurid from u56850778587.puc_tcc_cnpj_interesse)
+group by DECLARACAO.nm_empresarial_decl, DEC_CRED.cd_cnpj_declarante
+
+select * from wd_dctf_mot_sit_decl
